@@ -1,0 +1,16 @@
+[Unit]
+Description=Stremio VPS Stack Boot Fix (BBR Kernel Module & Cloud Firewall Rules)
+After=network-online.target
+Before=caddy.service pencarimovie.service telestremio.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/stremio-boot-fix.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stremio-boot-fix
+
+[Install]
+WantedBy=multi-user.target

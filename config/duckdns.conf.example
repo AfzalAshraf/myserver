@@ -1,0 +1,14 @@
+# ==============================================================================
+# DuckDNS Dynamic DNS Configuration
+# Copy to: /etc/duckdns.conf (chmod 600 /etc/duckdns.conf)
+# ==============================================================================
+
+# Your DuckDNS subdomain ONLY (without .duckdns.org)
+# Example: if your domain is mystremio.duckdns.org, set DUCKDNS_DOMAIN="mystremio"
+DUCKDNS_DOMAIN=""
+
+# Your DuckDNS account token from https://www.duckdns.org
+DUCKDNS_TOKEN=""
+
+# Optional: Explicit IPv4 override (leave empty to auto-detect public IPv4)
+DUCKDNS_IP=""

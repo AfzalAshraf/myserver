@@ -1,0 +1,87 @@
+# ==============================================================================
+# Stremio VPS Media Stack — Caddy Reverse Proxy (Streaming-Optimized)
+# Copy to: /etc/caddy/Caddyfile
+# Reload:  sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
+#
+# Why 3 hostnames work with a SINGLE free DuckDNS domain:
+# DuckDNS automatically resolves all subdomains (*.YOUR_DOMAIN.duckdns.org) to
+# the same IP! Caddy provisions free Let's Encrypt HTTPS certs via HTTP-01 for
+# all three hostnames automatically — no DNS API token required.
+# ==============================================================================
+
+# Reusable streaming proxy snippet (unbuffered HTTP 206 byte-range forwarding)
+(streaming_proxy) {
+	# Compress JSON manifests/catalogs & HTML UI only — never video byte streams
+	@metadata not path /dl/* /stream/* *.mp4 *.mkv *.webm *.avi *.ts *.m4v *.mp3 *.flac
+	encode @metadata zstd gzip
+
+	header {
+		# Security & streaming-friendly response headers
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+# 1. Unified Landing Dashboard -> https://YOUR_DOMAIN.duckdns.org
+YOUR_DOMAIN.duckdns.org {
+	root * /var/www/stremio-dashboard
+	encode zstd gzip
+	file_server
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		-Server
+	}
+}
+
+# 2. TeleStremio Server -> https://ts.YOUR_DOMAIN.duckdns.org
+#    Admin Login : https://ts.YOUR_DOMAIN.duckdns.org/login
+#    Addon URL   : https://ts.YOUR_DOMAIN.duckdns.org/stremio/<TOKEN>/manifest.json
+ts.YOUR_DOMAIN.duckdns.org {
+	import streaming_proxy
+
+	reverse_proxy 127.0.0.1:8000 {
+		# Flush video chunks immediately without proxy buffering
+		flush_interval -1
+
+		transport http {
+			dial_timeout 10s
+			response_header_timeout 60s
+			keepalive 2m
+			keepalive_idle_conns 64
+		}
+	}
+}
+
+# 3. PencariMovie Server -> https://pm.YOUR_DOMAIN.duckdns.org
+#    Dashboard   : https://pm.YOUR_DOMAIN.duckdns.org/
+#    Addon URL   : https://pm.YOUR_DOMAIN.duckdns.org/<SERVER_TOKEN>/manifest.json
+#    Eclipse URL : https://pm.YOUR_DOMAIN.duckdns.org/eclipse/manifest.json
+pm.YOUR_DOMAIN.duckdns.org {
+	import streaming_proxy
+
+	reverse_proxy 127.0.0.1:8088 {
+		# Flush MTProto HTTP 206 video chunks immediately to Stremio / Nuvio
+		flush_interval -1
+
+		transport http {
+			dial_timeout 10s
+			response_header_timeout 60s
+			keepalive 2m
+			keepalive_idle_conns 64
+		}
+	}
+}
+
+# ==============================================================================
+# OPTIONAL FALLBACK (IP-only HTTP before configuring a domain)
+# `install.sh` automatically configures `:80` to serve `/var/www/stremio-dashboard`
+# on initial setup until you replace `/etc/caddy/Caddyfile` with your domain above.
+# ==============================================================================
+# :80 {
+# 	root * /var/www/stremio-dashboard
+# 	encode zstd gzip
+# 	file_server
+# }
