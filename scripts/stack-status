@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# stack-status — Stremio VPS Media Stack Health & Endpoint Report
+# ==============================================================================
+set -euo pipefail
+
+GREEN=""
+YELLOW=""
+RED=""
+BOLD=""
+RESET=""
+if [ -t 1 ]; then
+  GREEN="$(printf '\033[32m')"
+  YELLOW="$(printf '\033[33m')"
+  RED="$(printf '\033[31m')"
+  BOLD="$(printf '\033[1m')"
+  RESET="$(printf '\033[0m')"
+fi
+
+check_unit() {
+  local unit="$1" label="$2"
+  local state
+  state="$(systemctl is-active "$unit" 2>/dev/null || true)"
+  case "$state" in
+    active)     printf "  %-24s %s● active%s\n" "$label" "$GREEN" "$RESET" ;;
+    activating) printf "  %-24s %s◐ activating%s\n" "$label" "$YELLOW" "$RESET" ;;
+    *)          printf "  %-24s %s○ %s%s\n" "$label" "$RED" "${state:-inactive}" "$RESET" ;;
+  esac
+}
+
+check_http() {
+  local url="$1" label="$2"
+  if curl -fsS --max-time 2 -o /dev/null "$url" 2>/dev/null; then
+    printf "  %-24s %s✔ reachable%s (%s)\n" "$label" "$GREEN" "$RESET" "$url"
+  else
+    printf "  %-24s %s✘ unreachable%s (%s)\n" "$label" "$YELLOW" "$RESET" "$url"
+  fi
+}
+
+ARCH="$(uname -m)"
+CC="$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "unknown")"
+QDISC="$(sysctl -n net.core.default_qdisc 2>/dev/null || echo "unknown")"
+PUB_IP="$(curl -4 -fsSL --connect-timeout 3 --max-time 4 https://api4.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "<VPS_IP>")"
+
+echo "${BOLD}======================================================${RESET}"
+echo "${BOLD}       Stremio VPS Media Stack — System Status        ${RESET}"
+echo "${BOLD}======================================================${RESET}"
+echo "  Architecture : $ARCH"
+echo "  TCP Tuning   : congestion=$CC, qdisc=$QDISC"
+echo "  Public IPv4  : $PUB_IP"
+echo ""
+echo "${BOLD}Services:${RESET}"
+check_unit "caddy.service"            "Caddy Reverse Proxy"
+check_unit "pencarimovie.service"     "PencariMovie Server"
+check_unit "telestremio.service"      "TeleStremio Server"
+check_unit "docker.service"           "Docker Engine"
+check_unit "duckdns.timer"            "DuckDNS Auto-Timer"
+check_unit "stremio-boot-fix.service" "Boot/Firewall Fix"
+echo ""
+echo "${BOLD}Local HTTP Probes:${RESET}"
+check_http "http://127.0.0.1:80/"             "Unified Dashboard (:80)"
+check_http "http://127.0.0.1:8088/api/version" "PencariMovie (:8088)"
+check_http "http://127.0.0.1:8000/"            "TeleStremio (:8000)"
+
+PM_ENV="/home/ubuntu/pencarimovie/.env"
+if [ -f "$PM_ENV" ]; then
+  PM_TOKEN="$(grep -E '^SERVER_TOKEN=' "$PM_ENV" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '"' || true)"
+  if [ -n "$PM_TOKEN" ]; then
+    echo ""
+    echo "${BOLD}PencariMovie Direct URLs:${RESET}"
+    echo "  Dashboard : http://${PUB_IP}:8088/"
+    echo "  Manifest  : http://${PUB_IP}:8088/${PM_TOKEN}/manifest.json"
+  fi
+fi
+echo "${BOLD}======================================================${RESET}"

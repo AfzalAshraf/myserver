@@ -1,0 +1,25 @@
+[Unit]
+Description=PencariMovie Server (Telegram MTProto Stremio Bridge)
+Documentation=https://github.com/aiskendi/pencarimovie-server
+After=network-online.target stremio-boot-fix.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/pencarimovie
+Environment="PM_LISTEN_HOST=0.0.0.0"
+Environment="PORT=8088"
+Environment="PM_APP_ROOT=/home/ubuntu/pencarimovie/storage"
+EnvironmentFile=-/home/ubuntu/pencarimovie/.env
+ExecStart=/home/ubuntu/pencarimovie/pencarimovie-server
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pencarimovie
+
+[Install]
+WantedBy=multi-user.target

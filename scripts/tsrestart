@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# tsrestart — TeleStremio Manager (Restart / Update / Logs / Status)
+# Usage:
+#   tsrestart            Restart TeleStremio and verify port 8000
+#   tsrestart --update   Pull latest Telegram-Stremio git commits and rebuild
+#   tsrestart --logs     Follow live TeleStremio container/service logs
+#   tsrestart --status   Show systemd and Docker container status
+# ==============================================================================
+set -euo pipefail
+
+TS_DIR="${TS_DIR:-/home/ubuntu/telegram-stremio}"
+CONF_FILE="$TS_DIR/config.env"
+
+run_root() {
+  if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+case "${1:-restart}" in
+  --logs|-l|logs)
+    exec journalctl -u telestremio -n 100 -f
+    ;;
+  --status|-s|status)
+    systemctl status telestremio --no-pager || true
+    echo ""
+    if [ -d "$TS_DIR" ]; then
+      (cd "$TS_DIR" && run_root docker compose ps) || true
+    fi
+    exit 0
+    ;;
+  --help|-h|help)
+    sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+esac
+
+if [ ! -d "$TS_DIR" ]; then
+  echo "Error: TeleStremio directory not found at $TS_DIR" >&2
+  exit 1
+fi
+
+# Guard against Docker's directory-mount footgun if config.env was missing
+if [ -d "$CONF_FILE" ]; then
+  echo "Fixing accidental directory at $CONF_FILE..."
+  run_root rm -rf "$CONF_FILE"
+  if [ -f "$TS_DIR/sample_config.env" ]; then
+    run_root cp "$TS_DIR/sample_config.env" "$CONF_FILE"
+  fi
+fi
+
+if [ ! -f "$CONF_FILE" ] || ! grep -qE '^API_ID=["'\'']?[0-9]+' "$CONF_FILE"; then
+  echo "Error: $CONF_FILE does not have API_ID configured yet." >&2
+  echo "Edit it first: nano $CONF_FILE" >&2
+  exit 1
+fi
+
+if [ "${1:-}" = "--update" ] || [ "${1:-}" = "update" ]; then
+  echo "==> Pulling latest updates in $TS_DIR..."
+  git -C "$TS_DIR" pull --ff-only
+fi
+
+echo "==> Restarting TeleStremio service..."
+run_root systemctl enable telestremio >/dev/null 2>&1 || true
+run_root systemctl restart telestremio
+
+echo "==> Waiting for TeleStremio on port 8000 (first Docker build may take 1-2 minutes)..."
+for _ in $(seq 1 15); do
+  if curl -fsS --max-time 2 "http://127.0.0.1:8000/" >/dev/null 2>&1; then
+    echo "✅ TeleStremio is LIVE on http://127.0.0.1:8000"
+    exit 0
+  fi
+  sleep 2
+done
+
+if systemctl is-active --quiet telestremio; then
+  echo "⏳ TeleStremio service is running (container build/startup in progress)."
+  echo "   Watch live progress with: tsrestart --logs"
+else
+  echo "⚠️  TeleStremio did not stay active. Check logs with: tsrestart --logs" >&2
+  exit 1
+fi
