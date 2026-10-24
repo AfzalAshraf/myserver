@@ -1,0 +1,22 @@
+[Unit]
+Description=TeleStremio Server (Telegram-to-Stremio Media Server)
+Documentation=https://github.com/weebzone/Telegram-Stremio
+After=network-online.target docker.service stremio-boot-fix.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/telegram-stremio
+ExecCondition=/bin/bash -c 'if [ ! -f /home/ubuntu/telegram-stremio/config.env ] || ! grep -qE "^API_ID=[\"\x27]?[0-9]+" /home/ubuntu/telegram-stremio/config.env; then echo "TeleStremio skipped: configure /home/ubuntu/telegram-stremio/config.env first, then run sudo tsrestart"; exit 1; fi'
+ExecStart=/usr/bin/docker compose up --build --remove-orphans
+ExecStop=/usr/bin/docker compose down
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=600
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=telestremio
+
+[Install]
+WantedBy=multi-user.target

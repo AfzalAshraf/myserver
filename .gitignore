@@ -1,0 +1,8 @@
+# Local secrets & runtime configs (never commit real tokens)
+config.env
+.env
+*.env
+!*.env.example
+duckdns.conf
+*.bak
+storage/
